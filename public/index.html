@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Todo App - Day 3</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px;
+            color: white;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            color: white;
+        }
+        .todo-form {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+        input {
+            flex: 1;
+            padding: 12px 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            background: rgba(255, 255, 255, 0.9);
+        }
+        button {
+            padding: 12px 25px;
+            background: #4ade80;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #22c55e;
+        }
+        .todos-container {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            padding: 20px;
+            min-height: 300px;
+        }
+        .todo-item {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .todo-text {
+            font-size: 18px;
+        }
+        .todo-actions button {
+            padding: 8px 15px;
+            margin-left: 10px;
+            font-size: 14px;
+        }
+        .delete-btn {
+            background: #ef4444;
+        }
+        .delete-btn:hover {
+            background: #dc2626;
+        }
+        .api-status {
+            text-align: center;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            margin-top: 30px;
+        }
+        .success {
+            color: #4ade80;
+            font-weight: bold;
+        }
+        .error {
+            color: #ef4444;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✅ Todo List App</h1>
+        
+        <div class="todo-form">
+            <input type="text" id="todoInput" placeholder="Enter a new todo..." />
+            <button onclick="addTodo()">Add Todo</button>
+        </div>
+        
+        <div class="todos-container" id="todosContainer">
+            <p style="text-align: center; color: #ccc;">Loading todos...</p>
+        </div>
+        
+        <div class="api-status" id="apiStatus">
+            Testing API connection...
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        
+        // Test API connection
+        async function testAPI() {
+            try {
+                const response = await fetch(`${API_BASE}/api/health`);
+                const data = await response.json();
+                document.getElementById('apiStatus').innerHTML = 
+                    `<span class="success">✅ API Connected!</span> Server: ${data.status}, Uptime: ${Math.floor(data.uptime)}s`;
+            } catch (error) {
+                document.getElementById('apiStatus').innerHTML = 
+                    `<span class="error">❌ API Error:</span> ${error.message}`;
+            }
+        }
+        
+        // Load todos from localStorage (for now)
+        function loadTodos() {
+            const todos = JSON.parse(localStorage.getItem('todos') || '[]');
+            const container = document.getElementById('todosContainer');
+            
+            if (todos.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #ccc;">No todos yet. Add one above!</p>';
+                return;
+            }
+            
+            container.innerHTML = todos.map((todo, index) => `
+                <div class="todo-item">
+                    <span class="todo-text">${todo}</span>
+                    <div class="todo-actions">
+                        <button onclick="completeTodo(${index})">✓ Done</button>
+                        <button class="delete-btn" onclick="deleteTodo(${index})">✗ Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Add new todo
+        function addTodo() {
+            const input = document.getElementById('todoInput');
+            const text = input.value.trim();
+            
+            if (!text) {
+                alert('Please enter a todo!');
+                return;
+            }
+            
+            const todos = JSON.parse(localStorage.getItem('todos') || '[]');
+            todos.push(text);
+            localStorage.setItem('todos', JSON.stringify(todos));
+            
+            input.value = '';
+            loadTodos();
+            
+            // Also send to your API (when MongoDB works)
+            fetch(`${API_BASE}/api/echo`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ todo: text, action: 'added' })
+            });
+        }
+        
+        // Complete todo
+        function completeTodo(index) {
+            const todos = JSON.parse(localStorage.getItem('todos') || '[]');
+            const completed = todos.splice(index, 1)[0];
+            localStorage.setItem('todos', JSON.stringify(todos));
+            loadTodos();
+            
+            alert(`Completed: ${completed}`);
+        }
+        
+        // Delete todo
+        function deleteTodo(index) {
+            if (!confirm('Delete this todo?')) return;
+            
+            const todos = JSON.parse(localStorage.getItem('todos') || '[]');
+            todos.splice(index, 1);
+            localStorage.setItem('todos', JSON.stringify(todos));
+            loadTodos();
+        }
+        
+        // Initialize
+        testAPI();
+        loadTodos();
+        
+        // Enter key support
+        document.getElementById('todoInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addTodo();
+        });
+    </script>
+</body>
+</html>

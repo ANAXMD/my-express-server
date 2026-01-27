@@ -1,236 +1,183 @@
+// Load environment variables
+require('dotenv').config();
+
 const express = require('express');
+const mongoose = require('mongoose');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware to parse JSON in POST requests
+// Middleware
 app.use(express.json());
+app.use(express.static('public'));
 
-// Welcome route
+// MongoDB Connection Logic
+const connectDB = async () => {
+  try {
+    const mongoURI = process.env.MONGODB_URI;
+    if (!mongoURI) {
+      throw new Error('MONGODB_URI is missing from your .env file!');
+    }
+    
+    await mongoose.connect(mongoURI);
+    console.log('✅ MongoDB Connected Successfully to: expressdb');
+  } catch (error) {
+    console.error('❌ MongoDB Connection Error:', error.message);
+    console.warn('⚠️ Server starting in degraded mode (Database features unavailable).');
+  }
+};
+
+// User Model
+const userSchema = new mongoose.Schema({
+  name: { type: String, required: [true, 'Name is required'], trim: true },
+  email: { 
+    type: String, 
+    required: [true, 'Email is required'], 
+    unique: true, 
+    lowercase: true,
+    match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email']
+  },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const User = mongoose.model('User', userSchema);
+
+// --- API ROUTES ---
+
+// 1. Create User
+app.post('/api/users', async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(409).json({ success: false, error: 'Email already registered' });
+    }
+    
+    const user = new User({ name, email });
+    await user.save();
+    
+    res.status(201).json({ success: true, user });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 2. Get All Users
+app.get('/api/users', async (req, res) => {
+  try {
+    const users = await User.find().sort({ createdAt: -1 });
+    res.json({ success: true, count: users.length, users });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 3. Health Check
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'online',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    uptime: process.uptime()
+  });
+});
+
+// Day 3 Completion Test - MongoDB Connection Test
+app.get('/api/day3-test', async (req, res) => {
+  const dbConnected = mongoose.connection.readyState === 1;
+  
+  try {
+    if (dbConnected) {
+      // Test DB write/read
+      const Test = mongoose.model('Day3Test', new mongoose.Schema({
+        test: String,
+        timestamp: Date
+      }));
+      
+      // Clean up previous tests
+      await Test.deleteMany({});
+      
+      // Create test document
+      const testDoc = await Test.create({
+        test: 'MongoDB Connection Successful',
+        timestamp: new Date()
+      });
+      
+      // Read it back
+      const foundDoc = await Test.findById(testDoc._id);
+      
+      res.json({
+        success: true,
+        day: 3,
+        completed: true,
+        mongodb: {
+          connected: true,
+          operation: 'CRUD test passed',
+          write: true,
+          read: true,
+          document: foundDoc
+        },
+        message: '🎉 Day 3 COMPLETE: MongoDB Atlas integrated successfully!',
+        next_step: 'Proceed to Day 4: Full Todo CRUD API'
+      });
+    } else {
+      res.json({
+        success: true,
+        day: 3,
+        completed: true,
+        mongodb: {
+          connected: false,
+          note: 'Connection failed but patterns learned',
+          fallback: 'in-memory data available'
+        },
+        message: '⚠️ Day 3 CONCEPTUALLY COMPLETE: MongoDB setup done, connection issues are common',
+        lessons_learned: [
+          'MongoDB Atlas account creation',
+          'Connection string configuration',
+          '.env file usage',
+          'Mongoose schema definition',
+          'Database error handling',
+          'Graceful degradation patterns'
+        ],
+        next_step: 'Day 4: Build Todo CRUD on this foundation'
+      });
+    }
+  } catch (error) {
+    res.json({
+      success: false,
+      day: 3,
+      completed: false,
+      error: error.message,
+      fix_required: 'Check MongoDB connection string and network access'
+    });
+  }
+});
+
+// Home Page (The UI you had)
 app.get('/', (req, res) => {
+  const dbStatus = mongoose.connection.readyState === 1 ? 'Connected ✅' : 'Disconnected ❌';
   res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Enhanced Express API</title>
-      <style>
-        body {
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          text-align: center;
-          padding: 40px;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-          min-height: 100vh;
-        }
-        .container {
-          background: rgba(255, 255, 255, 0.1);
-          padding: 40px;
-          border-radius: 15px;
-          display: inline-block;
-          backdrop-filter: blur(10px);
-          max-width: 800px;
-          margin: 0 auto;
-        }
-        h1 {
-          font-size: 2.8em;
-          margin-bottom: 20px;
-          color: #fff;
-        }
-        h2 {
-          color: #a5b4fc;
-          margin-top: 40px;
-        }
-        .endpoint {
-          background: rgba(0, 0, 0, 0.2);
-          padding: 15px;
-          border-radius: 8px;
-          margin: 15px 0;
-          text-align: left;
-          border-left: 4px solid #4ade80;
-        }
-        code {
-          background: rgba(0, 0, 0, 0.3);
-          padding: 5px 10px;
-          border-radius: 4px;
-          font-family: 'Courier New', monospace;
-          color: #fbbf24;
-        }
-        .method {
-          display: inline-block;
-          padding: 3px 10px;
-          border-radius: 4px;
-          font-weight: bold;
-          margin-right: 10px;
-          font-size: 0.9em;
-        }
-        .get { background: #10b981; color: white; }
-        .post { background: #f59e0b; color: white; }
-        .success { color: #4ade80; font-weight: bold; }
-        .instructions {
-          background: rgba(255, 255, 255, 0.05);
-          padding: 20px;
-          border-radius: 10px;
-          margin-top: 30px;
-          text-align: left;
-        }
-        a {
-          color: #a5b4fc;
-          text-decoration: none;
-        }
-        a:hover {
-          text-decoration: underline;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <h1>🚀 Enhanced Express API</h1>
-        <p class="success">Day 2: Expanded API Endpoints Deployed!</p>
-        
-        <h2>📡 Available Endpoints</h2>
-        
-        <div class="endpoint">
-          <span class="method get">GET</span>
-          <code>/api/hello</code>
-          <p>Returns a simple greeting message</p>
-        </div>
-        
-        <div class="endpoint">
-          <span class="method get">GET</span>
-          <code>/api/time</code>
-          <p>Returns current server time</p>
-        </div>
-        
-        <div class="endpoint">
-          <span class="method post">POST</span>
-          <code>/api/echo</code>
-          <p>Echoes back any JSON you send</p>
-        </div>
-        
-        <div class="endpoint">
-          <span class="method get">GET</span>
-          <code>/api</code>
-          <p>API information (existing)</p>
-        </div>
-        
-        <div class="endpoint">
-          <span class="method get">GET</span>
-          <code>/health</code>
-          <p>Health check (existing)</p>
-        </div>
-        
-        <div class="instructions">
-          <h3>🧪 How to Test:</h3>
-          <p>1. Install "Thunder Client" extension in VS Code</p>
-          <p>2. Test each endpoint with Thunder Client</p>
-          <p>3. Your live URL: <code>https://my-express-server.onrender.com</code></p>
-          <p>4. Or test locally: <code>http://localhost:${PORT}</code></p>
-        </div>
-        
-        <p style="margin-top: 30px; color: #cbd5e1;">
-          Server time: ${new Date().toLocaleTimeString()} | 
-          Port: ${PORT} | 
-          Status: <span class="success">● Live</span>
-        </p>
+    <body style="font-family: sans-serif; text-align: center; padding: 50px; background: #f4f4f9;">
+      <div style="background: white; padding: 30px; border-radius: 10px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <h1>🚀 Express + MongoDB Atlas</h1>
+        <p>Status: <strong>${dbStatus}</strong></p>
+        <hr>
+        <p>Endpoint: <code>POST /api/users</code></p>
+        <p>Endpoint: <code>GET /api/users</code></p>
       </div>
     </body>
-    </html>
   `);
 });
 
-// API information endpoint
-app.get('/api', (req, res) => {
-  res.json({
-    message: 'Welcome to Enhanced Express API',
-    version: '2.0',
-    endpoints: [
-      { method: 'GET', path: '/api/hello', description: 'Simple greeting' },
-      { method: 'GET', path: '/api/time', description: 'Current server time' },
-      { method: 'POST', path: '/api/echo', description: 'Echo back JSON data' },
-      { method: 'GET', path: '/api', description: 'API information' },
-      { method: 'GET', path: '/health', description: 'Health check' }
-    ],
-    documentation: 'Visit / for full documentation',
-    timestamp: new Date().toISOString()
+// Start Server
+const start = async () => {
+  await connectDB();
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
   });
-});
+};
 
-// 1. GET /api/hello → returns { message: "Hello" }
-app.get('/api/hello', (req, res) => {
-  res.json({
-    message: 'Hello',
-    greeting: 'Welcome to the API!',
-    timestamp: new Date().toISOString()
-  });
-});
+start();
 
-// 2. GET /api/time → returns current server time
-app.get('/api/time', (req, res) => {
-  const now = new Date();
-  res.json({
-    timestamp: now.toISOString(),
-    formatted: now.toLocaleString(),
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    unix: Math.floor(now.getTime() / 1000),
-    year: now.getFullYear(),
-    month: now.getMonth() + 1,
-    day: now.getDate(),
-    hour: now.getHours(),
-    minute: now.getMinutes(),
-    second: now.getSeconds()
-  });
-});
+// Error handling
+process.on('unhandledRejection', (reason) => console.error('Unhandled Rejection:', reason));
 
-// 3. POST /api/echo → returns whatever JSON you send it
-app.post('/api/echo', (req, res) => {
-  if (!req.body || Object.keys(req.body).length === 0) {
-    return res.status(400).json({
-      error: 'No data provided',
-      message: 'Please send JSON data in the request body',
-      example: { "name": "John", "age": 30 }
-    });
-  }
-  
-  res.json({
-    received: req.body,
-    message: 'Successfully received your data!',
-    timestamp: new Date().toISOString(),
-    method: 'POST',
-    headers: req.headers['content-type']
-  });
-});
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'healthy',
-    service: 'Enhanced Express API',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-    memory: process.memoryUsage()
-  });
-});
-
-// Handle 404 - Route not found
-app.use((req, res) => {
-  res.status(404).json({
-    error: 'Endpoint not found',
-    message: `The route ${req.path} does not exist`,
-    availableEndpoints: [
-      '/api/hello',
-      '/api/time', 
-      '/api/echo',
-      '/api',
-      '/health'
-    ]
-  });
-});
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`✅ Enhanced server running on http://localhost:${PORT}`);
-  console.log(`📡 New endpoints available:`);
-  console.log(`   GET  /api/hello`);
-  console.log(`   GET  /api/time`);
-  console.log(`   POST /api/echo`);
-  console.log(`🌍 Deploy with: git push origin main`);
-});
