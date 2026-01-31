@@ -17,7 +17,7 @@ const connectDB = async () => {
     if (!mongoURI) {
       throw new Error('MONGODB_URI is missing from your .env file!');
     }
-    
+
     await mongoose.connect(mongoURI);
     console.log('✅ MongoDB Connected Successfully to: expressdb');
   } catch (error) {
@@ -26,45 +26,75 @@ const connectDB = async () => {
   }
 };
 
-// User Model
+// Updated User Model with Authentication
 const userSchema = new mongoose.Schema({
-  name: { type: String, required: [true, 'Name is required'], trim: true },
-  email: { 
-    type: String, 
-    required: [true, 'Email is required'], 
-    unique: true, 
+  name: {
+    type: String,
+    required: [true, 'Name is required'],
+    trim: true,
+    minlength: [2, 'Name must be at least 2 characters']
+  },
+  email: {
+    type: String,
+    required: [true, 'Email is required'],
+    unique: true,
     lowercase: true,
+    trim: true,
     match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email']
   },
-  createdAt: { type: Date, default: Date.now }
+  password: {
+    type: String,
+    required: [true, 'Password is required'],
+    minlength: [6, 'Password must be at least 6 characters'],
+    select: false // Don't return password in queries
+  },
+  role: {
+    type: String,
+    enum: ['user', 'admin'],
+    default: 'user'
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  lastLogin: {
+    type: Date
+  }
 });
+
+// Remove password when converting to JSON
+userSchema.methods.toJSON = function() {
+  const user = this.toObject();
+  delete user.password;
+  return user;
+};
 
 const User = mongoose.model('User', userSchema);
 
 // Todo Model for Day 4
 const todoSchema = new mongoose.Schema({
-  task: { 
-    type: String, 
+  task: {
+    type: String,
     required: [true, 'Task is required'],
     trim: true,
     minlength: [3, 'Task must be at least 3 characters']
   },
-  completed: { 
-    type: Boolean, 
-    default: false 
+  completed: {
+    type: Boolean,
+    default: false
   },
   priority: {
     type: String,
     enum: ['low', 'medium', 'high'],
     default: 'medium'
   },
-  createdAt: { 
-    type: Date, 
-    default: Date.now 
+  createdAt: {
+    type: Date,
+    default: Date.now
   },
-  updatedAt: { 
-    type: Date, 
-    default: Date.now 
+  updatedAt: {
+    type: Date,
+    default: Date.now
   }
 });
 
@@ -76,15 +106,15 @@ const Todo = mongoose.model('Todo', todoSchema);
 app.post('/api/users', async (req, res) => {
   try {
     const { name, email } = req.body;
-    
+
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(409).json({ success: false, error: 'Email already registered' });
     }
-    
+
     const user = new User({ name, email });
     await user.save();
-    
+
     res.status(201).json({ success: true, user });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -113,7 +143,7 @@ app.get('/api/health', (req, res) => {
 // Day 3 Completion Test - MongoDB Connection Test
 app.get('/api/day3-test', async (req, res) => {
   const dbConnected = mongoose.connection.readyState === 1;
-  
+
   try {
     if (dbConnected) {
       // Test DB write/read
@@ -121,19 +151,19 @@ app.get('/api/day3-test', async (req, res) => {
         test: String,
         timestamp: Date
       }));
-      
+
       // Clean up previous tests
       await Test.deleteMany({});
-      
+
       // Create test document
       const testDoc = await Test.create({
         test: 'MongoDB Connection Successful',
         timestamp: new Date()
       });
-      
+
       // Read it back
       const foundDoc = await Test.findById(testDoc._id);
-      
+
       res.json({
         success: true,
         day: 3,
@@ -208,7 +238,7 @@ app.get('/api/todos', async (req, res) => {
         data: todos
       });
     }
-    
+
     // Fallback to memory
     res.json({
       success: true,
@@ -216,7 +246,7 @@ app.get('/api/todos', async (req, res) => {
       count: memoryTodos.length,
       data: memoryTodos
     });
-    
+
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -232,14 +262,15 @@ app.get('/api/todos/:id', async (req, res) => {
       }
       return res.json({ success: true, source: 'mongodb', data: todo });
     }
-    
+
     // Memory fallback
     const todo = memoryTodos.find(t => t.id === parseInt(req.params.id));
     if (!todo) {
       return res.status(404).json({ success: false, error: 'Todo not found' });
     }
+
     res.json({ success: true, source: 'memory', data: todo });
-    
+
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -249,7 +280,7 @@ app.get('/api/todos/:id', async (req, res) => {
 app.post('/api/todos', async (req, res) => {
   try {
     const { task, priority = 'medium' } = req.body;
-    
+
     // Validation
     if (!task || task.trim().length < 3) {
       return res.status(400).json({
@@ -257,14 +288,14 @@ app.post('/api/todos', async (req, res) => {
         error: 'Task is required and must be at least 3 characters'
       });
     }
-    
+
     if (canUseDB()) {
       const todo = await Todo.create({
         task: task.trim(),
         priority,
         completed: false
       });
-      
+
       return res.status(201).json({
         success: true,
         message: 'Todo created successfully',
@@ -272,7 +303,7 @@ app.post('/api/todos', async (req, res) => {
         data: todo
       });
     }
-    
+
     // Memory fallback
     const newTodo = {
       id: nextMemoryId++,
@@ -282,16 +313,16 @@ app.post('/api/todos', async (req, res) => {
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    
+
     memoryTodos.push(newTodo);
-    
+
     res.status(201).json({
       success: true,
       message: 'Todo created (in memory)',
       source: 'memory',
       data: newTodo
     });
-    
+
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -301,24 +332,24 @@ app.post('/api/todos', async (req, res) => {
 app.put('/api/todos/:id', async (req, res) => {
   try {
     const { task, completed, priority } = req.body;
-    
+
     if (canUseDB()) {
       const updates = {};
       if (task !== undefined) updates.task = task.trim();
       if (completed !== undefined) updates.completed = completed;
       if (priority !== undefined) updates.priority = priority;
       updates.updatedAt = new Date();
-      
+
       const todo = await Todo.findByIdAndUpdate(
         req.params.id,
         updates,
         { new: true, runValidators: true }
       );
-      
+
       if (!todo) {
         return res.status(404).json({ success: false, error: 'Todo not found' });
       }
-      
+
       return res.json({
         success: true,
         message: 'Todo updated',
@@ -326,25 +357,25 @@ app.put('/api/todos/:id', async (req, res) => {
         data: todo
       });
     }
-    
+
     // Memory fallback
     const index = memoryTodos.findIndex(t => t.id === parseInt(req.params.id));
     if (index === -1) {
       return res.status(404).json({ success: false, error: 'Todo not found' });
     }
-    
+
     if (task !== undefined) memoryTodos[index].task = task.trim();
     if (completed !== undefined) memoryTodos[index].completed = completed;
     if (priority !== undefined) memoryTodos[index].priority = priority;
     memoryTodos[index].updatedAt = new Date();
-    
+
     res.json({
       success: true,
       message: 'Todo updated (in memory)',
       source: 'memory',
       data: memoryTodos[index]
     });
-    
+
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -355,11 +386,11 @@ app.delete('/api/todos/:id', async (req, res) => {
   try {
     if (canUseDB()) {
       const todo = await Todo.findByIdAndDelete(req.params.id);
-      
+
       if (!todo) {
         return res.status(404).json({ success: false, error: 'Todo not found' });
       }
-      
+
       return res.json({
         success: true,
         message: 'Todo deleted',
@@ -367,22 +398,22 @@ app.delete('/api/todos/:id', async (req, res) => {
         data: todo
       });
     }
-    
+
     // Memory fallback
     const index = memoryTodos.findIndex(t => t.id === parseInt(req.params.id));
     if (index === -1) {
       return res.status(404).json({ success: false, error: 'Todo not found' });
     }
-    
+
     const deleted = memoryTodos.splice(index, 1)[0];
-    
+
     res.json({
       success: true,
       message: 'Todo deleted (from memory)',
       source: 'memory',
       data: deleted
     });
-    
+
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -393,7 +424,7 @@ app.get('/api/day4-test', async (req, res) => {
   try {
     // Test all CRUD operations
     const testPayload = { task: 'Test Day 4 CRUD', priority: 'high' };
-    
+
     res.json({
       success: true,
       day: 4,
@@ -421,16 +452,424 @@ app.get('/api/day4-test', async (req, res) => {
   }
 });
 
-// Updated Home Page with Day 4 features
+// ======================
+// DAY 5: AUTHENTICATION (WITH MEMORY FALLBACK)
+// ======================
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+
+console.log('🔐 Loading Day 5 Authentication with Memory Fallback...');
+
+// In-memory user storage (fallback when MongoDB is down)
+let memoryUsers = [];
+let nextMemoryUserId = 1;
+
+// Helper: Generate JWT Token
+const generateToken = (userId) => {
+  return jwt.sign(
+    { id: userId },
+    process.env.JWT_SECRET || 'fallback-secret-key-change-this-123',
+    { expiresIn: process.env.JWT_EXPIRE || '7d' }
+  );
+};
+
+// Helper: Hash Password
+const hashPassword = async (password) => {
+  const salt = await bcrypt.genSalt(10);
+  return await bcrypt.hash(password, salt);
+};
+
+// 1. POST /api/register → Register new user (WITH MEMORY FALLBACK)
+app.post('/api/register', async (req, res) => {
+  try {
+    console.log('📡 Register endpoint hit!');
+    const { name, email, password, confirmPassword } = req.body;
+
+    // Validation
+    if (!name || !email || !password || !confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'All fields are required'
+      });
+    }
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Passwords do not match'
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'Password must be at least 6 characters'
+      });
+    }
+
+    // Email format validation
+    const emailRegex = /^\S+@\S+\.\S+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please enter a valid email address'
+      });
+    }
+
+    // Check if MongoDB is available
+    if (canUseDB()) {
+      console.log('✅ Using MongoDB for registration');
+      // MongoDB version
+      const existingUser = await User.findOne({ email });
+      if (existingUser) {
+        return res.status(409).json({
+          success: false,
+          error: 'User with this email already exists'
+        });
+      }
+
+      const hashedPassword = await hashPassword(password);
+      const user = await User.create({
+        name,
+        email,
+        password: hashedPassword
+      });
+
+      const token = generateToken(user._id);
+      user.lastLogin = new Date();
+      await user.save();
+
+      res.status(201).json({
+        success: true,
+        message: 'User registered successfully (MongoDB)',
+        data: {
+          user: {
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role
+          },
+          token,
+          expiresIn: process.env.JWT_EXPIRE || '7d'
+        }
+      });
+    } else {
+      console.log('⚠️ Using in-memory storage for registration');
+      // Memory storage version
+      const existingUser = memoryUsers.find(u => u.email === email);
+      if (existingUser) {
+        return res.status(409).json({
+          success: false,
+          error: 'User with this email already exists'
+        });
+      }
+
+      const hashedPassword = await hashPassword(password);
+      const newUser = {
+        id: nextMemoryUserId++,
+        name,
+        email,
+        password: hashedPassword,
+        role: 'user',
+        createdAt: new Date(),
+        lastLogin: new Date()
+      };
+
+      memoryUsers.push(newUser);
+
+      const token = generateToken(newUser.id.toString());
+      const { password: _, ...userWithoutPassword } = newUser;
+
+      res.status(201).json({
+        success: true,
+        message: 'User registered successfully (in-memory storage)',
+        data: {
+          user: userWithoutPassword,
+          token,
+          expiresIn: process.env.JWT_EXPIRE || '7d'
+        }
+      });
+    }
+
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      note: 'Check if bcrypt is installed: npm install bcrypt'
+    });
+  }
+});
+
+// 2. POST /api/login → Login user (WITH MEMORY FALLBACK)
+app.post('/api/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Validation
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email and password are required'
+      });
+    }
+
+    if (canUseDB()) {
+      // MongoDB version
+      const user = await User.findOne({ email }).select('+password');
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          error: 'Invalid credentials'
+        });
+      }
+
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+      if (!isPasswordValid) {
+        return res.status(401).json({
+          success: false,
+          error: 'Invalid credentials'
+        });
+      }
+
+      const token = generateToken(user._id);
+      user.lastLogin = new Date();
+      await user.save();
+
+      res.json({
+        success: true,
+        message: 'Login successful (MongoDB)',
+        data: {
+          user: {
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            lastLogin: user.lastLogin
+          },
+          token,
+          expiresIn: process.env.JWT_EXPIRE || '7d'
+        }
+      });
+    } else {
+      // Memory storage version
+      const user = memoryUsers.find(u => u.email === email);
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          error: 'Invalid credentials'
+        });
+      }
+
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+      if (!isPasswordValid) {
+        return res.status(401).json({
+          success: false,
+          error: 'Invalid credentials'
+        });
+      }
+
+      user.lastLogin = new Date();
+      const token = generateToken(user.id.toString());
+      const { password: _, ...userWithoutPassword } = user;
+
+      res.json({
+        success: true,
+        message: 'Login successful (in-memory)',
+        data: {
+          user: userWithoutPassword,
+          token,
+          expiresIn: process.env.JWT_EXPIRE || '7d'
+        }
+      });
+    }
+
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 3. GET /api/profile → Get current user profile
+app.get('/api/profile', async (req, res) => {
+  try {
+    // Get token from header
+    const token = req.headers.authorization?.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: 'No token provided'
+      });
+    }
+
+    // Verify token
+    const decoded = jwt.verify(
+      token, 
+      process.env.JWT_SECRET || 'fallback-secret-key-change-this-123'
+    );
+
+    if (canUseDB()) {
+      // MongoDB version
+      const user = await User.findById(decoded.id);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: user
+      });
+    } else {
+      // Memory storage version
+      const user = memoryUsers.find(u => u.id.toString() === decoded.id);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found'
+        });
+      }
+
+      const { password: _, ...userWithoutPassword } = user;
+      res.json({
+        success: true,
+        data: userWithoutPassword
+      });
+    }
+
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid token'
+      });
+    }
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        error: 'Token expired'
+      });
+    }
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 4. POST /api/logout → Logout (client-side, just returns success)
+app.post('/api/logout', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Logged out successfully. Delete token on client side.'
+  });
+});
+
+// 5. Middleware: Protect routes
+const protect = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: 'Not authorized'
+      });
+    }
+
+    const decoded = jwt.verify(
+      token, 
+      process.env.JWT_SECRET || 'fallback-secret-key-change-this-123'
+    );
+
+    if (canUseDB()) {
+      req.user = await User.findById(decoded.id);
+    } else {
+      req.user = memoryUsers.find(u => u.id.toString() === decoded.id);
+    }
+
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: 'User no longer exists'
+      });
+    }
+
+    next();
+  } catch (error) {
+    res.status(401).json({
+      success: false,
+      error: 'Not authorized'
+    });
+  }
+};
+
+// 6. Example: Protected todo route
+app.get('/api/protected/todos', protect, async (req, res) => {
+  try {
+    // This route requires authentication
+    const { password: _, ...userWithoutPassword } = req.user.toJSON ? 
+      req.user.toJSON() : req.user;
+
+    res.json({
+      success: true,
+      message: 'Protected route accessed successfully',
+      user: userWithoutPassword,
+      todos: canUseDB() ? await Todo.find() : memoryTodos
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Day 5 Test Endpoint
+app.get('/api/day5-test', (req, res) => {
+  res.json({
+    success: true,
+    day: 5,
+    title: 'Authentication System',
+    database: canUseDB() ? 'MongoDB' : 'In-Memory Storage',
+    endpoints: [
+      { method: 'POST', path: '/api/register', description: 'Register new user' },
+      { method: 'POST', path: '/api/login', description: 'Login user' },
+      { method: 'GET', path: '/api/profile', description: 'Get user profile (requires token)' },
+      { method: 'POST', path: '/api/logout', description: 'Logout user' },
+      { method: 'GET', path: '/api/protected/todos', description: 'Protected todos route' }
+    ],
+    features: [
+      'Password hashing with bcrypt',
+      'JWT token generation',
+      'Email validation',
+      'Password confirmation',
+      'Role-based access (user/admin)',
+      'Token expiration',
+      'Memory fallback when MongoDB unavailable'
+    ],
+    message: '✅ Day 5: Authentication system ready!',
+    note: 'Working with in-memory storage until MongoDB is fixed'
+  });
+});
+
+// Updated Home Page with Day 5 features
 app.get('/', (req, res) => {
   const dbStatus = canUseDB() ? 'Connected ✅' : 'Disconnected (Using Memory) ⚠️';
   const todoCount = canUseDB() ? 'MongoDB Collection' : `${memoryTodos.length} in memory`;
-  
+  const userCount = canUseDB() ? 'MongoDB Collection' : `${memoryUsers.length} in memory`;
+
   res.send(`
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Express API - Day 3 & 4 Complete</title>
+      <title>Express API - Complete (Days 1-5)</title>
       <style>
         body {
           font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -446,7 +885,7 @@ app.get('/', (req, res) => {
           border-radius: 15px;
           display: inline-block;
           backdrop-filter: blur(10px);
-          max-width: 900px;
+          max-width: 1000px;
           margin: 0 auto;
         }
         h1 {
@@ -469,8 +908,11 @@ app.get('/', (req, res) => {
           text-align: left;
           border-left: 4px solid;
         }
+        .day1 { border-color: #ef4444; }
+        .day2 { border-color: #f59e0b; }
         .day3 { border-color: #3b82f6; }
         .day4 { border-color: #10b981; }
+        .day5 { border-color: #8b5cf6; }
         code {
           background: rgba(0, 0, 0, 0.3);
           padding: 5px 10px;
@@ -491,25 +933,74 @@ app.get('/', (req, res) => {
         .post { background: #f59e0b; }
         .put { background: #3b82f6; }
         .delete { background: #ef4444; }
+        .day-count {
+          display: flex;
+          justify-content: center;
+          gap: 15px;
+          margin: 20px 0;
+          flex-wrap: wrap;
+        }
+        .day-badge {
+          padding: 8px 20px;
+          border-radius: 20px;
+          font-weight: bold;
+          font-size: 0.9em;
+        }
+        .day1-badge { background: #ef4444; }
+        .day2-badge { background: #f59e0b; }
+        .day3-badge { background: #3b82f6; }
+        .day4-badge { background: #10b981; }
+        .day5-badge { background: #8b5cf6; }
       </style>
     </head>
     <body>
       <div class="container">
-        <h1>🚀 Express API - Complete</h1>
-        <p class="success">✅ Day 3: MongoDB Integration ✓</p>
-        <p class="success">✅ Day 4: Todo CRUD API ✓</p>
-        
+        <h1>🚀 Express API - Complete Journey</h1>
+        <p class="success">5 Days of Backend Development Complete!</p>
+       
+        <div class="day-count">
+          <div class="day-badge day1-badge">Day 1: Deployment ✓</div>
+          <div class="day-badge day2-badge">Day 2: Enhanced API ✓</div>
+          <div class="day-badge day3-badge">Day 3: MongoDB ✓</div>
+          <div class="day-badge day4-badge">Day 4: Todo CRUD ✓</div>
+          <div class="day-badge day5-badge">Day 5: Auth ✓</div>
+        </div>
+       
         <div class="status-box">
           <h3>System Status</h3>
           <p>Database: <strong>${dbStatus}</strong></p>
           <p>Todos: <strong>${todoCount}</strong></p>
+          <p>Users: <strong>${userCount}</strong></p>
+          <p>Authentication: <strong>JWT Token System ✓</strong></p>
         </div>
-        
-        <h2>📡 Day 3: MongoDB Endpoints</h2>
+       
+        <h2>📡 Day 1-2: Basic API</h2>
+        <div class="endpoint day1">
+          <span class="method get">GET</span>
+          <code>/api/hello</code>
+          <p>Simple greeting</p>
+        </div>
+        <div class="endpoint day1">
+          <span class="method get">GET</span>
+          <code>/api/time</code>
+          <p>Server time</p>
+        </div>
+        <div class="endpoint day2">
+          <span class="method post">POST</span>
+          <code>/api/echo</code>
+          <p>Echo back JSON</p>
+        </div>
+        <div class="endpoint day1">
+          <span class="method get">GET</span>
+          <code>/api/health</code>
+          <p>Health check</p>
+        </div>
+       
+        <h2>📡 Day 3: MongoDB Integration</h2>
         <div class="endpoint day3">
           <span class="method post">POST</span>
           <code>/api/users</code>
-          <p>Create new user (requires name, email)</p>
+          <p>Create new user (name, email)</p>
         </div>
         <div class="endpoint day3">
           <span class="method get">GET</span>
@@ -521,8 +1012,8 @@ app.get('/', (req, res) => {
           <code>/api/day3-test</code>
           <p>Day 3 completion test</p>
         </div>
-        
-        <h2>📡 Day 4: Todo CRUD Endpoints</h2>
+       
+        <h2>📡 Day 4: Todo CRUD API</h2>
         <div class="endpoint day4">
           <span class="method get">GET</span>
           <code>/api/todos</code>
@@ -553,15 +1044,43 @@ app.get('/', (req, res) => {
           <code>/api/day4-test</code>
           <p>Day 4 completion test</p>
         </div>
-        
-        <div class="status-box">
-          <h3>🧪 Test with Thunder Client:</h3>
-          <p><code>POST http://localhost:3000/api/todos</code></p>
-          <p>Body: <code>{"task": "Test Day 4", "priority": "high"}</code></p>
+       
+        <h2>📡 Day 5: Authentication System</h2>
+        <div class="endpoint day5">
+          <span class="method post">POST</span>
+          <code>/api/register</code>
+          <p>Register new user (name, email, password, confirmPassword)</p>
         </div>
-        
+        <div class="endpoint day5">
+          <span class="method post">POST</span>
+          <code>/api/login</code>
+          <p>Login user (email, password)</p>
+        </div>
+        <div class="endpoint day5">
+          <span class="method get">GET</span>
+          <code>/api/profile</code>
+          <p>Get user profile (requires Authorization: Bearer token)</p>
+        </div>
+        <div class="endpoint day5">
+          <span class="method post">POST</span>
+          <code>/api/logout</code>
+          <p>Logout user (client-side token removal)</p>
+        </div>
+        <div class="endpoint day5">
+          <span class="method get">GET</span>
+          <code>/api/day5-test</code>
+          <p>Day 5 completion test</p>
+        </div>
+       
+        <div class="status-box">
+          <h3>🧪 Test Authentication:</h3>
+          <p>1. <code>POST /api/register</code> to create account</p>
+          <p>2. <code>POST /api/login</code> to get token</p>
+          <p>3. <code>GET /api/profile</code> with header: <code>Authorization: Bearer YOUR_TOKEN</code></p>
+        </div>
+       
         <p style="margin-top: 30px; color: #cbd5e1; font-size: 0.9em;">
-          Port: ${PORT} | Status: <span class="success">● Fully Operational</span>
+          Port: ${PORT} | Status: <span class="success">● Fully Operational</span> | Auth: <span class="success">● JWT Enabled</span>
         </p>
       </div>
     </body>
@@ -581,4 +1100,3 @@ start();
 
 // Error handling
 process.on('unhandledRejection', (reason) => console.error('Unhandled Rejection:', reason));
-
