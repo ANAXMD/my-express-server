@@ -71,7 +71,7 @@ userSchema.methods.toJSON = function() {
 
 const User = mongoose.model('User', userSchema);
 
-// Todo Model for Day 4
+// Todo Model for Day 4 (UPDATED FOR DAY 6 WITH USER FIELD)
 const todoSchema = new mongoose.Schema({
   task: {
     type: String,
@@ -87,6 +87,11 @@ const todoSchema = new mongoose.Schema({
     type: String,
     enum: ['low', 'medium', 'high'],
     default: 'medium'
+  },
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: false // Will be set when user creates todo
   },
   createdAt: {
     type: Date,
@@ -220,13 +225,13 @@ const canUseDB = () => mongoose.connection.readyState === 1;
 
 // In-memory fallback for todos
 let memoryTodos = [
-  { id: 1, task: "Complete Day 3 MongoDB", completed: true, priority: "high" },
-  { id: 2, task: "Start Day 4 Todo CRUD", completed: false, priority: "high" },
-  { id: 3, task: "Test API endpoints", completed: false, priority: "medium" }
+  { id: 1, task: "Complete Day 3 MongoDB", completed: true, priority: "high", userId: null },
+  { id: 2, task: "Start Day 4 Todo CRUD", completed: false, priority: "high", userId: null },
+  { id: 3, task: "Test API endpoints", completed: false, priority: "medium", userId: null }
 ];
 let nextMemoryId = 4;
 
-// 1. GET /api/todos - Get all todos
+// 1. GET /api/todos - Get all todos (PUBLIC)
 app.get('/api/todos', async (req, res) => {
   try {
     if (canUseDB()) {
@@ -252,7 +257,7 @@ app.get('/api/todos', async (req, res) => {
   }
 });
 
-// 2. GET /api/todos/:id - Get single todo
+// 2. GET /api/todos/:id - Get single todo (PUBLIC)
 app.get('/api/todos/:id', async (req, res) => {
   try {
     if (canUseDB()) {
@@ -276,148 +281,11 @@ app.get('/api/todos/:id', async (req, res) => {
   }
 });
 
-// 3. POST /api/todos - Create new todo
-app.post('/api/todos', async (req, res) => {
-  try {
-    const { task, priority = 'medium' } = req.body;
+// 3. POST /api/todos - Create new todo (PROTECTED - SEE DAY 6 SECTION BELOW)
 
-    // Validation
-    if (!task || task.trim().length < 3) {
-      return res.status(400).json({
-        success: false,
-        error: 'Task is required and must be at least 3 characters'
-      });
-    }
+// 4. PUT /api/todos/:id - Update todo (PROTECTED - SEE DAY 6 SECTION BELOW)
 
-    if (canUseDB()) {
-      const todo = await Todo.create({
-        task: task.trim(),
-        priority,
-        completed: false
-      });
-
-      return res.status(201).json({
-        success: true,
-        message: 'Todo created successfully',
-        source: 'mongodb',
-        data: todo
-      });
-    }
-
-    // Memory fallback
-    const newTodo = {
-      id: nextMemoryId++,
-      task: task.trim(),
-      priority,
-      completed: false,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    memoryTodos.push(newTodo);
-
-    res.status(201).json({
-      success: true,
-      message: 'Todo created (in memory)',
-      source: 'memory',
-      data: newTodo
-    });
-
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// 4. PUT /api/todos/:id - Update todo
-app.put('/api/todos/:id', async (req, res) => {
-  try {
-    const { task, completed, priority } = req.body;
-
-    if (canUseDB()) {
-      const updates = {};
-      if (task !== undefined) updates.task = task.trim();
-      if (completed !== undefined) updates.completed = completed;
-      if (priority !== undefined) updates.priority = priority;
-      updates.updatedAt = new Date();
-
-      const todo = await Todo.findByIdAndUpdate(
-        req.params.id,
-        updates,
-        { new: true, runValidators: true }
-      );
-
-      if (!todo) {
-        return res.status(404).json({ success: false, error: 'Todo not found' });
-      }
-
-      return res.json({
-        success: true,
-        message: 'Todo updated',
-        source: 'mongodb',
-        data: todo
-      });
-    }
-
-    // Memory fallback
-    const index = memoryTodos.findIndex(t => t.id === parseInt(req.params.id));
-    if (index === -1) {
-      return res.status(404).json({ success: false, error: 'Todo not found' });
-    }
-
-    if (task !== undefined) memoryTodos[index].task = task.trim();
-    if (completed !== undefined) memoryTodos[index].completed = completed;
-    if (priority !== undefined) memoryTodos[index].priority = priority;
-    memoryTodos[index].updatedAt = new Date();
-
-    res.json({
-      success: true,
-      message: 'Todo updated (in memory)',
-      source: 'memory',
-      data: memoryTodos[index]
-    });
-
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// 5. DELETE /api/todos/:id - Delete todo
-app.delete('/api/todos/:id', async (req, res) => {
-  try {
-    if (canUseDB()) {
-      const todo = await Todo.findByIdAndDelete(req.params.id);
-
-      if (!todo) {
-        return res.status(404).json({ success: false, error: 'Todo not found' });
-      }
-
-      return res.json({
-        success: true,
-        message: 'Todo deleted',
-        source: 'mongodb',
-        data: todo
-      });
-    }
-
-    // Memory fallback
-    const index = memoryTodos.findIndex(t => t.id === parseInt(req.params.id));
-    if (index === -1) {
-      return res.status(404).json({ success: false, error: 'Todo not found' });
-    }
-
-    const deleted = memoryTodos.splice(index, 1)[0];
-
-    res.json({
-      success: true,
-      message: 'Todo deleted (from memory)',
-      source: 'memory',
-      data: deleted
-    });
-
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+// 5. DELETE /api/todos/:id - Delete todo (PROTECTED - SEE DAY 6 SECTION BELOW)
 
 // Day 4 Completion Test
 app.get('/api/day4-test', async (req, res) => {
@@ -693,7 +561,7 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// 3. GET /api/profile → Get current user profile
+// 3. GET /api/profile → Get current user profile (PROTECTED)
 app.get('/api/profile', async (req, res) => {
   try {
     // Get token from header
@@ -771,7 +639,7 @@ app.post('/api/logout', (req, res) => {
   });
 });
 
-// 5. Middleware: Protect routes
+// 5. Middleware: Protect routes (AUTH MIDDLEWARE FOR DAY 6)
 const protect = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -779,15 +647,17 @@ const protect = async (req, res, next) => {
     if (!token) {
       return res.status(401).json({
         success: false,
-        error: 'Not authorized'
+        error: 'Not authorized, no token provided'
       });
     }
 
+    // Verify token
     const decoded = jwt.verify(
       token, 
       process.env.JWT_SECRET || 'fallback-secret-key-change-this-123'
     );
 
+    // Find user based on storage type
     if (canUseDB()) {
       req.user = await User.findById(decoded.id);
     } else {
@@ -797,39 +667,33 @@ const protect = async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        error: 'User no longer exists'
+        error: 'User not found or token invalid'
       });
     }
 
     next();
   } catch (error) {
+    console.error('Auth middleware error:', error.message);
+    
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid token'
+      });
+    }
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        error: 'Token expired'
+      });
+    }
+    
     res.status(401).json({
       success: false,
       error: 'Not authorized'
     });
   }
 };
-
-// 6. Example: Protected todo route
-app.get('/api/protected/todos', protect, async (req, res) => {
-  try {
-    // This route requires authentication
-    const { password: _, ...userWithoutPassword } = req.user.toJSON ? 
-      req.user.toJSON() : req.user;
-
-    res.json({
-      success: true,
-      message: 'Protected route accessed successfully',
-      user: userWithoutPassword,
-      todos: canUseDB() ? await Todo.find() : memoryTodos
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
 
 // Day 5 Test Endpoint
 app.get('/api/day5-test', (req, res) => {
@@ -842,8 +706,7 @@ app.get('/api/day5-test', (req, res) => {
       { method: 'POST', path: '/api/register', description: 'Register new user' },
       { method: 'POST', path: '/api/login', description: 'Login user' },
       { method: 'GET', path: '/api/profile', description: 'Get user profile (requires token)' },
-      { method: 'POST', path: '/api/logout', description: 'Logout user' },
-      { method: 'GET', path: '/api/protected/todos', description: 'Protected todos route' }
+      { method: 'POST', path: '/api/logout', description: 'Logout user' }
     ],
     features: [
       'Password hashing with bcrypt',
@@ -859,7 +722,318 @@ app.get('/api/day5-test', (req, res) => {
   });
 });
 
-// Updated Home Page with Day 5 features
+// ======================
+// DAY 6: MIDDLEWARE & PROTECTED ROUTES
+// ======================
+
+console.log('🔐 Loading Day 6: Middleware & Protected Routes...');
+
+// PUBLIC: Get public todos (first 5) - no auth required
+app.get('/api/public-todos', async (req, res) => {
+  try {
+    if (canUseDB()) {
+      const todos = await Todo.find().sort({ createdAt: -1 }).limit(5);
+      return res.json({
+        success: true,
+        source: 'mongodb',
+        message: 'Public todos (first 5)',
+        count: todos.length,
+        data: todos
+      });
+    }
+
+    // Memory fallback
+    const publicTodos = memoryTodos.slice(0, 5);
+    
+    res.json({
+      success: true,
+      source: 'memory',
+      message: 'Public todos (first 5)',
+      count: publicTodos.length,
+      data: publicTodos
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// PROTECTED: Create todo - only authenticated users
+app.post('/api/todos', protect, async (req, res) => {
+  try {
+    const { task, priority = 'medium' } = req.body;
+
+    // Validation
+    if (!task || task.trim().length < 3) {
+      return res.status(400).json({
+        success: false,
+        error: 'Task is required and must be at least 3 characters'
+      });
+    }
+
+    // Get user ID
+    const userId = canUseDB() ? req.user._id : req.user.id;
+
+    if (canUseDB()) {
+      const todo = await Todo.create({
+        task: task.trim(),
+        priority,
+        completed: false,
+        user: userId
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: 'Todo created successfully',
+        source: 'mongodb',
+        user: {
+          id: req.user._id,
+          name: req.user.name,
+          email: req.user.email
+        },
+        data: todo
+      });
+    }
+
+    // Memory fallback
+    const newTodo = {
+      id: nextMemoryId++,
+      task: task.trim(),
+      priority,
+      completed: false,
+      userId: userId,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    memoryTodos.push(newTodo);
+
+    res.status(201).json({
+      success: true,
+      message: 'Todo created (in memory)',
+      source: 'memory',
+      user: {
+        id: req.user.id,
+        name: req.user.name,
+        email: req.user.email
+      },
+      data: newTodo
+    });
+
+  } catch (error) {
+    console.error('Todo creation error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// PROTECTED: Update todo - only todo owner
+app.put('/api/todos/:id', protect, async (req, res) => {
+  try {
+    const { task, completed, priority } = req.body;
+    const userId = canUseDB() ? req.user._id : req.user.id;
+
+    if (canUseDB()) {
+      const updates = {};
+      if (task !== undefined) updates.task = task.trim();
+      if (completed !== undefined) updates.completed = completed;
+      if (priority !== undefined) updates.priority = priority;
+      updates.updatedAt = new Date();
+
+      const todo = await Todo.findOneAndUpdate(
+        { _id: req.params.id, user: userId },
+        updates,
+        { new: true, runValidators: true }
+      );
+
+      if (!todo) {
+        return res.status(404).json({
+          success: false,
+          error: 'Todo not found or not authorized to update'
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: 'Todo updated',
+        source: 'mongodb',
+        data: todo
+      });
+    }
+
+    // Memory fallback
+    const index = memoryTodos.findIndex(t => 
+      t.id === parseInt(req.params.id) && t.userId === userId
+    );
+    
+    if (index === -1) {
+      return res.status(404).json({
+        success: false,
+        error: 'Todo not found or not authorized to update'
+      });
+    }
+
+    if (task !== undefined) memoryTodos[index].task = task.trim();
+    if (completed !== undefined) memoryTodos[index].completed = completed;
+    if (priority !== undefined) memoryTodos[index].priority = priority;
+    memoryTodos[index].updatedAt = new Date();
+
+    res.json({
+      success: true,
+      message: 'Todo updated (in memory)',
+      source: 'memory',
+      data: memoryTodos[index]
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// PROTECTED: Delete todo - only todo owner
+app.delete('/api/todos/:id', protect, async (req, res) => {
+  try {
+    const userId = canUseDB() ? req.user._id : req.user.id;
+
+    if (canUseDB()) {
+      const todo = await Todo.findOneAndDelete({
+        _id: req.params.id,
+        user: userId
+      });
+
+      if (!todo) {
+        return res.status(404).json({
+          success: false,
+          error: 'Todo not found or not authorized to delete'
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: 'Todo deleted',
+        source: 'mongodb',
+        data: todo
+      });
+    }
+
+    // Memory fallback
+    const index = memoryTodos.findIndex(t => 
+      t.id === parseInt(req.params.id) && t.userId === userId
+    );
+    
+    if (index === -1) {
+      return res.status(404).json({
+        success: false,
+        error: 'Todo not found or not authorized to delete'
+      });
+    }
+
+    const deleted = memoryTodos.splice(index, 1)[0];
+
+    res.json({
+      success: true,
+      message: 'Todo deleted (from memory)',
+      source: 'memory',
+      data: deleted
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// PROTECTED: Get user's own todos
+app.get('/api/my-todos', protect, async (req, res) => {
+  try {
+    const userId = canUseDB() ? req.user._id : req.user.id;
+
+    if (canUseDB()) {
+      const todos = await Todo.find({ user: userId }).sort({ createdAt: -1 });
+      return res.json({
+        success: true,
+        source: 'mongodb',
+        count: todos.length,
+        user: {
+          id: req.user._id,
+          name: req.user.name,
+          email: req.user.email
+        },
+        data: todos
+      });
+    }
+
+    // Memory fallback - filter by userId
+    const userTodos = memoryTodos.filter(t => t.userId === userId);
+    
+    res.json({
+      success: true,
+      source: 'memory',
+      count: userTodos.length,
+      user: {
+        id: req.user.id,
+        name: req.user.name,
+        email: req.user.email
+      },
+      data: userTodos
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Day 6 Test Endpoint (PROTECTED)
+app.get('/api/day6-test', protect, (req, res) => {
+  res.json({
+    success: true,
+    day: 6,
+    title: 'Middleware & Protected Routes',
+    features: [
+      '✅ authMiddleware (protect) to verify JWT',
+      '✅ GET /api/profile → protected, returns user data',
+      '✅ POST /api/todos → only authenticated users can create',
+      '✅ PUT/DELETE /api/todos/:id → protected (user-specific)',
+      '✅ GET /api/my-todos → get only user\'s todos',
+      '✅ Tested with authorization headers'
+    ],
+    protected_routes: [
+      '/api/profile',
+      '/api/todos (POST, PUT, DELETE)',
+      '/api/my-todos',
+      '/api/day6-test'
+    ],
+    public_routes: [
+      '/api/todos (GET)',
+      '/api/todos/:id (GET)',
+      '/api/public-todos'
+    ],
+    message: '✅ Day 6: Middleware & Protected Routes Complete!',
+    your_user: {
+      id: canUseDB() ? req.user._id : req.user.id,
+      name: req.user.name,
+      email: req.user.email
+    }
+  });
+});
+
+// ======================
+// HOMEPAGE (UPDATED WITH DAY 6)
+// ======================
+
 app.get('/', (req, res) => {
   const dbStatus = canUseDB() ? 'Connected ✅' : 'Disconnected (Using Memory) ⚠️';
   const todoCount = canUseDB() ? 'MongoDB Collection' : `${memoryTodos.length} in memory`;
@@ -869,7 +1043,7 @@ app.get('/', (req, res) => {
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Express API - Complete (Days 1-5)</title>
+      <title>Express API - Complete (Days 1-6)</title>
       <style>
         body {
           font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -885,7 +1059,7 @@ app.get('/', (req, res) => {
           border-radius: 15px;
           display: inline-block;
           backdrop-filter: blur(10px);
-          max-width: 1000px;
+          max-width: 1200px;
           margin: 0 auto;
         }
         h1 {
@@ -913,6 +1087,7 @@ app.get('/', (req, res) => {
         .day3 { border-color: #3b82f6; }
         .day4 { border-color: #10b981; }
         .day5 { border-color: #8b5cf6; }
+        .day6 { border-color: #ec4899; }
         code {
           background: rgba(0, 0, 0, 0.3);
           padding: 5px 10px;
@@ -951,12 +1126,20 @@ app.get('/', (req, res) => {
         .day3-badge { background: #3b82f6; }
         .day4-badge { background: #10b981; }
         .day5-badge { background: #8b5cf6; }
+        .day6-badge { background: #ec4899; }
+        .note {
+          background: rgba(251, 191, 36, 0.2);
+          padding: 10px;
+          border-radius: 5px;
+          margin: 10px 0;
+          font-size: 0.9em;
+        }
       </style>
     </head>
     <body>
       <div class="container">
         <h1>🚀 Express API - Complete Journey</h1>
-        <p class="success">5 Days of Backend Development Complete!</p>
+        <p class="success">6 Days of Backend Development Complete!</p>
        
         <div class="day-count">
           <div class="day-badge day1-badge">Day 1: Deployment ✓</div>
@@ -964,6 +1147,7 @@ app.get('/', (req, res) => {
           <div class="day-badge day3-badge">Day 3: MongoDB ✓</div>
           <div class="day-badge day4-badge">Day 4: Todo CRUD ✓</div>
           <div class="day-badge day5-badge">Day 5: Auth ✓</div>
+          <div class="day-badge day6-badge">Day 6: Middleware ✓</div>
         </div>
        
         <div class="status-box">
@@ -972,77 +1156,47 @@ app.get('/', (req, res) => {
           <p>Todos: <strong>${todoCount}</strong></p>
           <p>Users: <strong>${userCount}</strong></p>
           <p>Authentication: <strong>JWT Token System ✓</strong></p>
+          <p>Protected Routes: <strong>Middleware Implemented ✓</strong></p>
         </div>
        
-        <h2>📡 Day 1-2: Basic API</h2>
-        <div class="endpoint day1">
+        <h2>📡 Day 6: Middleware & Protected Routes</h2>
+        
+        <div class="note">
+          <strong>🔐 Day 6 Features:</strong><br>
+          • authMiddleware to verify JWT tokens<br>
+          • Protected routes requiring Authorization header<br>
+          • User-specific todo operations<br>
+          • Test with Thunder Client below
+        </div>
+        
+        <div class="endpoint day6">
           <span class="method get">GET</span>
-          <code>/api/hello</code>
-          <p>Simple greeting</p>
+          <code>/api/profile</code>
+          <p><strong>Protected:</strong> Get user profile (requires <code>Authorization: Bearer token</code>)</p>
         </div>
-        <div class="endpoint day1">
-          <span class="method get">GET</span>
-          <code>/api/time</code>
-          <p>Server time</p>
-        </div>
-        <div class="endpoint day2">
-          <span class="method post">POST</span>
-          <code>/api/echo</code>
-          <p>Echo back JSON</p>
-        </div>
-        <div class="endpoint day1">
-          <span class="method get">GET</span>
-          <code>/api/health</code>
-          <p>Health check</p>
-        </div>
-       
-        <h2>📡 Day 3: MongoDB Integration</h2>
-        <div class="endpoint day3">
-          <span class="method post">POST</span>
-          <code>/api/users</code>
-          <p>Create new user (name, email)</p>
-        </div>
-        <div class="endpoint day3">
-          <span class="method get">GET</span>
-          <code>/api/users</code>
-          <p>Get all users</p>
-        </div>
-        <div class="endpoint day3">
-          <span class="method get">GET</span>
-          <code>/api/day3-test</code>
-          <p>Day 3 completion test</p>
-        </div>
-       
-        <h2>📡 Day 4: Todo CRUD API</h2>
-        <div class="endpoint day4">
-          <span class="method get">GET</span>
-          <code>/api/todos</code>
-          <p>Get all todos</p>
-        </div>
-        <div class="endpoint day4">
-          <span class="method get">GET</span>
-          <code>/api/todos/:id</code>
-          <p>Get single todo</p>
-        </div>
-        <div class="endpoint day4">
+        
+        <div class="endpoint day6">
           <span class="method post">POST</span>
           <code>/api/todos</code>
-          <p>Create new todo (requires task)</p>
+          <p><strong>Protected:</strong> Create todo (requires authentication)</p>
         </div>
-        <div class="endpoint day4">
-          <span class="method put">PUT</span>
-          <code>/api/todos/:id</code>
-          <p>Update todo</p>
-        </div>
-        <div class="endpoint day4">
-          <span class="method delete">DELETE</span>
-          <code>/api/todos/:id</code>
-          <p>Delete todo</p>
-        </div>
-        <div class="endpoint day4">
+        
+        <div class="endpoint day6">
           <span class="method get">GET</span>
-          <code>/api/day4-test</code>
-          <p>Day 4 completion test</p>
+          <code>/api/my-todos</code>
+          <p><strong>Protected:</strong> Get only your todos</p>
+        </div>
+        
+        <div class="endpoint day6">
+          <span class="method get">GET</span>
+          <code>/api/public-todos</code>
+          <p><strong>Public:</strong> Get first 5 todos (no auth required)</p>
+        </div>
+        
+        <div class="endpoint day6">
+          <span class="method get">GET</span>
+          <code>/api/day6-test</code>
+          <p><strong>Protected:</strong> Day 6 completion test</p>
         </div>
        
         <h2>📡 Day 5: Authentication System</h2>
@@ -1057,11 +1211,6 @@ app.get('/', (req, res) => {
           <p>Login user (email, password)</p>
         </div>
         <div class="endpoint day5">
-          <span class="method get">GET</span>
-          <code>/api/profile</code>
-          <p>Get user profile (requires Authorization: Bearer token)</p>
-        </div>
-        <div class="endpoint day5">
           <span class="method post">POST</span>
           <code>/api/logout</code>
           <p>Logout user (client-side token removal)</p>
@@ -1072,15 +1221,50 @@ app.get('/', (req, res) => {
           <p>Day 5 completion test</p>
         </div>
        
+        <h2>📡 Day 4: Todo CRUD API</h2>
+        <div class="endpoint day4">
+          <span class="method get">GET</span>
+          <code>/api/todos</code>
+          <p>Get all todos (Public)</p>
+        </div>
+        <div class="endpoint day4">
+          <span class="method get">GET</span>
+          <code>/api/todos/:id</code>
+          <p>Get single todo (Public)</p>
+        </div>
+        <div class="endpoint day4">
+          <span class="method put">PUT</span>
+          <code>/api/todos/:id</code>
+          <p>Update todo (Protected)</p>
+        </div>
+        <div class="endpoint day4">
+          <span class="method delete">DELETE</span>
+          <code>/api/todos/:id</code>
+          <p>Delete todo (Protected)</p>
+        </div>
+        <div class="endpoint day4">
+          <span class="method get">GET</span>
+          <code>/api/day4-test</code>
+          <p>Day 4 completion test</p>
+        </div>
+       
         <div class="status-box">
-          <h3>🧪 Test Authentication:</h3>
-          <p>1. <code>POST /api/register</code> to create account</p>
-          <p>2. <code>POST /api/login</code> to get token</p>
-          <p>3. <code>GET /api/profile</code> with header: <code>Authorization: Bearer YOUR_TOKEN</code></p>
+          <h3>🧪 Test Day 6 with Thunder Client:</h3>
+          <p><strong>Step 1:</strong> <code>POST /api/register</code> to create account</p>
+          <p><strong>Step 2:</strong> <code>POST /api/login</code> to get JWT token</p>
+          <p><strong>Step 3:</strong> Add header: <code>Authorization: Bearer YOUR_TOKEN</code></p>
+          <p><strong>Step 4:</strong> Test protected routes:</p>
+          <ul style="text-align: left; margin-left: 20px;">
+            <li><code>GET /api/profile</code> - Should return user data</li>
+            <li><code>POST /api/todos</code> - Should create todo with user association</li>
+            <li><code>GET /api/my-todos</code> - Should return only your todos</li>
+            <li><code>GET /api/day6-test</code> - Should return Day 6 status</li>
+          </ul>
+          <p><strong>Step 5:</strong> Test without token - Should get 401 Unauthorized</p>
         </div>
        
         <p style="margin-top: 30px; color: #cbd5e1; font-size: 0.9em;">
-          Port: ${PORT} | Status: <span class="success">● Fully Operational</span> | Auth: <span class="success">● JWT Enabled</span>
+          Port: ${PORT} | Status: <span class="success">● Fully Operational</span> | Auth: <span class="success">● JWT Enabled</span> | Middleware: <span class="success">● Active</span>
         </p>
       </div>
     </body>
@@ -1093,6 +1277,7 @@ const start = async () => {
   await connectDB();
   app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
+    console.log(`🔐 Day 6: Middleware & Protected Routes loaded`);
   });
 };
 
