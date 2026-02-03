@@ -1,14 +1,6 @@
 const mongoose = require('mongoose');
-require('dotenv').config();
 
-console.log('Testing MongoDB Connection...');
-
-// Debug: Show URI (hide password)
-const uri = process.env.MONGODB_URI;
-const maskedUri = uri.replace(/:([^:@]*)@/, ':****@');
-console.log('URI:', maskedUri);
-
-mongoose.connect(uri)
+mongoose.connect('MONGODB_URI=mongodb+srv://Express:Express123@cluster0.ffg9quz.mongodb.net/expressdb?retrywrites=true&w=majority')
   .then(() => {
     console.log('✅ SUCCESS: MongoDB Connected!');
     process.exit(0);
