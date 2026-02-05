@@ -37,30 +37,37 @@ app.use(helmet({
 
 // 2. CORS configuration
 const allowedOrigins = [
-  'http://localhost:3000',                    // React dev
-  'http://localhost:5173',                    // Vite dev
-  'https://my-express-server-rvkq.onrender.com', // Your API
-  'https://your-react-frontend.vercel.app',   // Your future frontend
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://my-express-server-rvkq.onrender.com',
+  'https://todo-frontend-zeta-sepia.vercel.app',
+  'https://*.vercel.app', // All Vercel subdomains
+  'https://api.codetabs.com', // Your proxy
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin
     if (!origin) return callback(null, true);
     
-    // Check if the origin is in the allowed list
-    if (allowedOrigins.some(allowed => origin === allowed) ||
-         origin.endswith('.vercel.app') ||
-         process.env.NODE_ENV !== 'production') {
-      return callback(null, true);
-    } 
+    // Check if origin is allowed
+    const isAllowed = allowedOrigins.some(allowed => 
+      origin === allowed || 
+      origin.endsWith('.vercel.app') ||
+      origin.includes('codetabs.com')
+    );
     
+    if (isAllowed || process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    
+    console.log('Blocked by CORS:', origin);
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['Authorization'], // Expose Authorization header
+  exposedHeaders: ['Authorization'],
 }));
 
 // Handle preflight requests manually
