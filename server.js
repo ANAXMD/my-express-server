@@ -49,18 +49,13 @@ app.use(cors({
     if (!origin) return callback(null, true);
     
     // Check if the origin is in the allowed list
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    if (allowedOrigins.some(allowed => origin === allowed) ||
+         origin.endswith('.vercel.app') ||
+         process.env.NODE_ENV !== 'production') {
       return callback(null, true);
-    } else {
-      // In development, be more permissive
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`Allowing origin in dev: ${origin}`);
-        return callback(null, true);
-      }
-      // In production, be strict
-      console.log(`Blocked by CORS: ${origin}`);
-      return callback(new Error('Not allowed by CORS'));
-    }
+    } 
+    
+    return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
